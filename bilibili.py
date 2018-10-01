@@ -1,6 +1,7 @@
 #-*- coding: utf-8 -*-
 
 import re
+import copy
 import datetime
 import requests
 
@@ -8,13 +9,18 @@ import requests
 # from collections.abc import Iterable  
 
 
+
+GET_UP_INFO_URL = "https://space.bilibili.com/ajax/member/GetInfo"
+
+GET_FOLLOW_INFO_URL = "https://api.bilibili.com/x/relation/stat"
+
+GET_UPPER_SUBMIT_INFO_URL = "https://space.bilibili.com/ajax/member/getSubmitVideos"
+
+
 # 此header用于获取UP主的个人信息
 # 关键字段: 
 #   referer: 为某一用户的个人空间地址
 #   host: 必须为space.bilibili.com
-GET_UP_INFO_URL = "https://space.bilibili.com/ajax/member/GetInfo"
-GET_FOLLOW_INFO_URL = "https://api.bilibili.com/x/relation/stat"
-GET_UPPER_SUBMIT_INFO_URL = "https://space.bilibili.com/ajax/member/getSubmitVideos"
 GET_UP_INFO_HEADER = {
     'Accept':
     'application/json, text/plain, */*',
@@ -31,6 +37,7 @@ GET_UP_INFO_HEADER = {
     'UserAgent':
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36 Edge/15.15063'
 }
+
 GENERAL_HEADERS = {
     'Accept':
     'application/json, text/plain, */*',
@@ -41,6 +48,25 @@ GENERAL_HEADERS = {
     'User-Agent':
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36 Edge/15.15063'
 }
+
+USER_GENERAL_INFO_ROOT = 'data'
+USER_GENERAL_INFO_ATTR = [
+    'mid','name', 'sex', 'face', 'regtime', 'birthday', 'sign',
+    ['level_info', 'current_level'], ['vip', 'vipType'],
+    ['vip', 'vipStatus']
+]
+
+USER_FOLLOWING_INFO_ROOT = 'data'
+USER_FOLLOWING_INFO_ATTR = [
+    'following', 'follower'
+]
+
+UPPER_SUBMIT_SUMMARY_ROOT = ['data', 'vlist']
+UPPER_SUBMIT_SUMMARY_ATTR = [
+    'aid', 'typeid', 'play', 'pic', 'description',
+    'copyright', 'title', 'created', 'length', 'video_review',
+    'favorites'
+]
 
 # 用户类
 # 本来应该叫upper但仔细想想好像并不是每个人都是upper2333
@@ -75,9 +101,8 @@ class user(object):
         self.follower = follower
         self.submits = submits
 
-    # 正常的用户都应该有一个用户名的吧!
     def __bool__(self):
-        return self.name != None
+        return self.name != None and self.mid > 0
 
 
 # 投稿摘要
@@ -128,19 +153,12 @@ class url(object):
         self.link=link
         self.accept_type = accept_type
         self.args=args
-        
 
-# 资源类
+
 class resource(object):
-    def __init__(
-        self,
-        urls=[],
-        callback=None
-    ):
-        self.urls = urls
-        self.callback = callback
+    def __init__(self, data=[]):
+        self.data = data       
         
-
 # 投稿类
 class submit(object):
     def __init__(
@@ -178,6 +196,9 @@ class submit(object):
         pass
 
 
+def _set_user_general_info(user):
+    pass
+
 # 从字典中获取值
 # 如果不存在则返回None
 def get_attr(kwargs, key):
@@ -212,16 +233,15 @@ def get_num_submit(mid, **kwargs):
     except:
         return 0
 
-
 # 下载url置顶的资源
 def download_url(url_g, **kwargs):
-    print(kwargs)
+    # print(kwargs)
     try:
         method = url_g.method
         link = url_g.link
         accept_type = url_g.accept_type
         args = url_g.args
-        print("method:%s, link=%s, accept_type=%s, args=%s" % (method, link, accept_type, args))
+        # print("method:%s, link=%s, accept_type=%s, args=%s" % (method, link, accept_type, args))
     except:
         print("failed to get propery")
         return None
@@ -264,109 +284,6 @@ def download_url(url_g, **kwargs):
         except:
             return response
     
-
-# 获取用户
-# kwargs会作为参数传给requests.
-# 额外支持的kwargs:
-#   has_summary： 如果为真，则返回带有submit summary的user对象 默认为假
-# 返回值:
-#   返回user对象(中途失败则返回不完全或者为空的user对象)
-'''
-此方法会阻塞调用1-3次requests, 如果是投稿较多的up延迟或许比较明显， 如果单线程， 对数据量要求不是
-很高的情况下可以使用此方法，方便直接返回user对象. 不然则鼓励使用支持多线程的方法获取， 效率更高。
-'''
-def get_user(mid, **kwargs):
-    has_summary = kwargs.pop('has_summary', False)
-    # has_summary = get_attr(kwargs, 'has_summary')
-    # if 'has_summary' in kwargs:
-    #     kwargs.pop('has_summary')
-
-    post_url = GET_UP_INFO_URL
-    post_data = {
-        'csrf': get_csrf(),
-        'mid':mid
-    }
-    user_obj = user(mid)
-    
-    try:
-        response = requests.post(
-            post_url,
-            data=post_data,
-            headers=GET_UP_INFO_HEADER,
-            **kwargs
-        )
-        response_json = response.json()
-    except:
-        print("failed to connect the host")
-        return user_obj
-    
-    user_data = get_attr(response_json, 'data')
-    data_attributes = [
-        'name', 'sex', 'face', 'regtime', 'birthday', 'sign',
-        ['level_info', 'current_level'], ['vip', 'vipType'],
-        ['vip', 'vipStatus']
-    ]
-
-    # 获取up主基本参数
-    try:
-        user_keys = list(vars(user_obj).keys())
-        for i in range(1, min(len(data_attributes), len(user_keys))):
-            user_obj.__dict__[user_keys[i]] = get_attr(user_data, data_attributes[i - 1])  
-    except:
-        print("failed to get general infomation of user")
-        return user_obj
-
-    # 获取up主的粉丝数与关注数
-    try:
-        response = requests.get(
-            "%s?vmid=%d" % (GET_FOLLOW_INFO_URL, mid),
-            headers=GENERAL_HEADERS,
-            **kwargs
-        )
-        response_json = response.json()
-        follow_data = get_attr(response_json, 'data')
-        user_obj.follower = get_attr(follow_data, 'follower')
-        user_obj.following = get_attr(follow_data, 'following')
-    except:
-        print("failed to get response")
-        return user_obj
-
-    # 判断是否返回投稿信息
-    # print("???")
-    if has_summary:
-        # print(get_num_submit(mid))
-        try:
-            response = requests.get(
-                "%s?mid=%d&page=1&pagesize=%d" % (
-                    GET_UPPER_SUBMIT_INFO_URL,
-                    mid,
-                    get_num_submit(mid, **kwargs)
-                ),
-                headers=GENERAL_HEADERS,
-                **kwargs
-            )
-            
-            summary_attributes = [
-                'aid', 'typeid', 'play', 'pic', 'description',
-                'copyright', 'title', 'created', 'length', 'video_review',
-                'favorites'
-            ]
-            for each in get_attr(response.json(), ['data', 'vlist']):
-                # print(each)
-                summary_obj = submit_summary()
-                summary_keys = list(vars(summary_obj).keys())
-
-                # 遍历属性逐个赋值
-                for i in range(0, min(len(summary_keys), len(summary_attributes))):
-                    summary_obj.__dict__[summary_keys[i]] = get_attr(each, summary_attributes[i])
-
-                user_obj.submits.append(summary_obj)
-
-        except:
-            print("failed to get the infomation of submits.")
-            return user_obj
-
-    return user_obj
 
 # 获取用户的url
 # kwargs会在一定情况下作为参数传给requests(则devide_submit=True时)
@@ -420,6 +337,169 @@ def get_user_urls(mid, **kwargs):
     
     return res
 
+# 下载用户的urls, 返回resource对象
+def download_user_urls(urls, **kwargs):
+    res = []
+    hs = [
+        GET_UP_INFO_HEADER,
+        GENERAL_HEADERS,
+        GET_UP_INFO_HEADER
+    ]
+    length = len(urls)
+    try:
+        for i in range(0, min(length, len(hs))):
+            res.append(download_url(urls[i], headers=hs[i]))
+    except:
+        return None
+    return resource(res)
+
+# 解析资源, res为resource对象
+# 因为url下载下来的资源可能需要多个才能集合成一个对象, resource用来包装urls获得的资源
+def parse_user_urls(res):
+    info = []
+    roots = [
+        USER_GENERAL_INFO_ROOT,
+        USER_FOLLOWING_INFO_ROOT,
+        UPPER_SUBMIT_SUMMARY_ROOT
+    ]
+    attrs = [
+        USER_GENERAL_INFO_ATTR,
+        USER_FOLLOWING_INFO_ATTR,
+        UPPER_SUBMIT_SUMMARY_ATTR
+    ]
+    count = 0
+    res_user = user(0)
+    summary_keys = list(vars(submit_summary()).keys())
+    user_keys = list(vars(res_user).keys())
+
+    for i in range(0, len(res.data)):
+        info.append(res.data[i]) 
+
+    for i in range(0, len(info) - 1):
+        data = get_attr(info[i], roots[i])
+        for j in range(0, len(attrs[i])):
+            # print("res_user.__dict__[%s]=%s" % (user_keys[count], attrs[i][j]))
+            res_user.__dict__[user_keys[count]] = get_attr(data, attrs[i][j])
+            count = count + 1
+
+
+    if len(info) > 2:
+        data = get_attr(info[2], UPPER_SUBMIT_SUMMARY_ROOT)
+        submits_list = []
+        for i in data:
+            summary = submit_summary()
+            for j in range(0, len(UPPER_SUBMIT_SUMMARY_ATTR)):
+                summary.__dict__[summary_keys[j]] = get_attr(i, UPPER_SUBMIT_SUMMARY_ATTR[j])
+            submits_list.append(copy.deepcopy(summary))
+        res_user.submits = submits_list
+    
+    return res_user
+
+
+# 获取用户
+# kwargs会作为参数传给requests.
+# 额外支持的kwargs:
+#   has_summary： 如果为真，则返回带有submit summary的user对象 默认为假
+# 返回值:
+#   返回user对象(中途失败则返回不完全或者为空的user对象)
+'''
+此方法会阻塞调用1-3次requests, 如果是投稿较多的up延迟或许比较明显， 如果单线程， 对数据量要求不是
+很高的情况下可以使用此方法，方便直接返回user对象. 不然则鼓励使用支持多线程的方法获取， 效率更高。
+'''
+def get_user(mid, **kwargs):
+    return parse_user_urls(download_user_urls(get_user_urls(mid, **kwargs)))
+    # has_summary = kwargs.pop('has_summary', False)
+    # # has_summary = get_attr(kwargs, 'has_summary')
+    # # if 'has_summary' in kwargs:
+    # #     kwargs.pop('has_summary')
+
+    # post_url = GET_UP_INFO_URL
+    # post_data = {
+    #     'csrf': get_csrf(),
+    #     'mid':mid
+    # }
+    # user_obj = user(mid)
+    
+    # try:
+    #     response = requests.post(
+    #         post_url,
+    #         data=post_data,
+    #         headers=GET_UP_INFO_HEADER,
+    #         **kwargs
+    #     )
+    #     response_json = response.json()
+    # except:
+    #     print("failed to connect the host")
+    #     return user_obj
+    
+    # user_data = get_attr(response_json, 'data')
+    # data_attributes = [
+    #     'name', 'sex', 'face', 'regtime', 'birthday', 'sign',
+    #     ['level_info', 'current_level'], ['vip', 'vipType'],
+    #     ['vip', 'vipStatus']
+    # ]
+
+    # # 获取up主基本参数
+    # try:
+    #     user_keys = list(vars(user_obj).keys())
+    #     for i in range(1, min(len(data_attributes), len(user_keys))):
+    #         user_obj.__dict__[user_keys[i]] = get_attr(user_data, data_attributes[i - 1])  
+    # except:
+    #     print("failed to get general infomation of user")
+    #     return user_obj
+
+    # # 获取up主的粉丝数与关注数
+    # try:
+    #     response = requests.get(
+    #         "%s?vmid=%d" % (GET_FOLLOW_INFO_URL, mid),
+    #         headers=GENERAL_HEADERS,
+    #         **kwargs
+    #     )
+    #     response_json = response.json()
+    #     follow_data = get_attr(response_json, 'data')
+    #     user_obj.follower = get_attr(follow_data, 'follower')
+    #     user_obj.following = get_attr(follow_data, 'following')
+    # except:
+    #     print("failed to get response")
+    #     return user_obj
+
+    # # 判断是否返回投稿信息
+    # # print("???")
+    # if has_summary:
+    #     # print(get_num_submit(mid))
+    #     try:
+    #         response = requests.get(
+    #             "%s?mid=%d&page=1&pagesize=%d" % (
+    #                 GET_UPPER_SUBMIT_INFO_URL,
+    #                 mid,
+    #                 get_num_submit(mid, **kwargs)
+    #             ),
+    #             headers=GENERAL_HEADERS,
+    #             **kwargs
+    #         )
+            
+    #         summary_attributes = [
+    #             'aid', 'typeid', 'play', 'pic', 'description',
+    #             'copyright', 'title', 'created', 'length', 'video_review',
+    #             'favorites'
+    #         ]
+    #         for each in get_attr(response.json(), ['data', 'vlist']):
+    #             # print(each)
+    #             summary_obj = submit_summary()
+    #             summary_keys = list(vars(summary_obj).keys())
+
+    #             # 遍历属性逐个赋值
+    #             for i in range(0, min(len(summary_keys), len(summary_attributes))):
+    #                 summary_obj.__dict__[summary_keys[i]] = get_attr(each, summary_attributes[i])
+
+    #             user_obj.submits.append(summary_obj)
+
+    #     except:
+    #         print("failed to get the infomation of submits.")
+    #         return user_obj
+
+    # return user_obj
+
 
 if __name__ == "__main__":
     # print(download_url(
@@ -434,6 +514,10 @@ if __name__ == "__main__":
     #     ),
     #     headers=GET_UP_INFO_HEADER
     # ))
-    res = get_user_urls(398510, has_summary=True, timeout=3)
-    for i in res:
-        print(vars(i))
+    # get_user_urls(398510, has_summary=True)
+    # res = get_user_urls(398510, has_summary=True)
+    u = parse_user_urls(download_user_urls(get_user_urls(152683670, has_summary=True)))
+    print(vars(u))
+    # print(vars(u))
+    print(vars(get_user(1)))
+    # print(vars(u))
