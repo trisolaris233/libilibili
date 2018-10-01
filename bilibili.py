@@ -8,20 +8,24 @@ import requests
 # from collections import defaultdict
 # from collections.abc import Iterable  
 
+'''
+----------------------------------global-------------------------------------
+'''
 
-
+# 获取u用户基本信息
 GET_UP_INFO_URL = "https://space.bilibili.com/ajax/member/GetInfo"
-
+# 获取用户关注数与粉丝数
 GET_FOLLOW_INFO_URL = "https://api.bilibili.com/x/relation/stat"
-
+# 获取up主投稿信息(简要)
 GET_UPPER_SUBMIT_INFO_URL = "https://space.bilibili.com/ajax/member/getSubmitVideos"
-
+# 获取视频
+GET_UPPER_SUBMIT_DETAIL_URL = "https://api.bilibili.com/x/web-interface/view"
 
 # 此header用于获取UP主的个人信息
 # 关键字段: 
 #   referer: 为某一用户的个人空间地址
 #   host: 必须为space.bilibili.com
-GET_UP_INFO_HEADER = {
+GET_UP_INFO_HEADERS = {
     'Accept':
     'application/json, text/plain, */*',
     'Accept - Encoding':
@@ -49,6 +53,19 @@ GENERAL_HEADERS = {
     'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36 Edge/15.15063'
 }
 
+GET_SUBMIT_DETAIL_HEADERS  = {
+    'Accept':
+    'application/json, text/plain, */*',
+    'Accept - Encoding':
+    'gzip, deflate, br',
+    'Accept-Language':
+    'zh-CN,zh;',
+    'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36 Edge/15.15063',
+    'Host':
+    'api.bilibili.com',
+}
+
 USER_GENERAL_INFO_ROOT = 'data'
 USER_GENERAL_INFO_ATTR = [
     'mid','name', 'sex', 'face', 'regtime', 'birthday', 'sign',
@@ -68,6 +85,29 @@ UPPER_SUBMIT_SUMMARY_ATTR = [
     'favorites'
 ]
 
+
+UPPER_SUBMIT_ROOT = 'data'
+UPPER_SUBMIT_ATTR = [
+    'aid', 'videos', 'tid', 'tname', 'copyright', 'pic',
+    'title', 'pubdate', 'ctime', 'desc', 'attribute', ['stat', 'view'],
+    ['stat', 'reply'], ['stat', 'favorite'], ['stat', 'coin'], ['stat', 'share'],
+    ['stat', 'his_rank'], ['stat', 'like'], ['stat', 'dislike'], ['stat', 'danmaku'],
+    ['owner', 'mid'], ['owner', 'name'], ['owner', 'face']
+]
+UPPER_SUBMIT_PART_ROOT = ['data', 'pages']
+UPPER_SUBMIT_PART_ATTR = [
+    'duration', 'cid', ['dimension', 'width'], ['dimension', 'height']
+]
+'''
+----------------------------------global-------------------------------------
+'''
+
+
+
+
+'''
+----------------------------------class-------------------------------------
+'''
 # 用户类
 # 本来应该叫upper但仔细想想好像并不是每个人都是upper2333
 class user(object):
@@ -170,19 +210,12 @@ class submit(object):
         copyright=1,        # 版权类型, 1为原创， 2为转载
         pic=None,           # 封面
         title=None,         # 标题
-        publish_date=       # 发布时间
+        publish_time=       # 发布时间
         int(datetime.datetime.now().timestamp()),  
         created_time=       # 也是一个时间, 不过比较莫名其妙就是了
         int(datetime.datetime.now().timestamp()),   
-        descibe=None,       # 介绍
-        attribute=None,     # 
-        duration=[],        # 持续时长
-        owner_mid=0,        # up主的mid
-        owner_name=None,    # up主的用户名
-        owner_face=None,    # up主的头像
-        cid=[],             # 视频的cid
-        width=[],           # 视频宽度，单位像素
-        height=[],          # 视频高度，单位像素
+        description=None,   # 介绍
+        attribute=None,     #
         view=0,             # 播放量
         reply=0,            # 回复数
         favorite=0,         # 收藏数
@@ -191,14 +224,51 @@ class submit(object):
         rank=0,             # 历史最高排名
         like=0,             # 推荐数
         dislike=0,          # 不推荐数
-        danmaku=0           # 弹幕数
+        danmaku=0,          # 弹幕数
+        owner_mid=0,        # up主的mid
+        owner_name=None,    # up主的用户名
+        owner_face=None,    # up主的头像
+        duration=[],        # 持续时长
+        cid=[],             # 视频的cid
+        width=[],           # 视频宽度，单位像素
+        height=[]          # 视频高度，单位像素
+        
     ):
-        pass
+        self.aid = aid
+        self.videos = videos
+        self.type_id = type_id
+        self.type_name = type_name
+        self.copyright = copyright
+        self.pic = pic
+        self.title = title
+        self.publish_time = publish_time
+        self.created_time = created_time
+        self.description = description
+        self.attribute = attribute
+        self.view = view
+        self.reply = reply
+        self.favorite = favorite
+        self.coin = coin
+        self.share = share
+        self.rank = rank
+        self.like = like
+        self.dislike = like
+        self.danmaku = danmaku
+        self.owner_mid = owner_mid
+        self.owner_name = owner_face
+        self.owner_face = owner_face
+        self.duration = duration
+        self.cid = cid
+        self.width = width
+        self.height = height
 
+'''
+----------------------------------class-------------------------------------
+'''
 
-def _set_user_general_info(user):
-    pass
-
+'''
+----------------------------------tools-------------------------------------
+'''
 # 从字典中获取值
 # 如果不存在则返回None
 def get_attr(kwargs, key):
@@ -284,7 +354,14 @@ def download_url(url_g, **kwargs):
         except:
             return response
     
+'''
+----------------------------------tools-------------------------------------
+'''
 
+    
+'''
+----------------------------------user-------------------------------------
+'''
 # 获取用户的url
 # kwargs会在一定情况下作为参数传给requests(则devide_submit=True时)
 # kwargs支持的参数:
@@ -341,13 +418,13 @@ def get_user_urls(mid, **kwargs):
 def download_user_urls(urls, **kwargs):
     res = []
     hs = [
-        GET_UP_INFO_HEADER,
+        GET_UP_INFO_HEADERS,
         GENERAL_HEADERS,
-        GET_UP_INFO_HEADER
+        GET_UP_INFO_HEADERS
     ]
-    length = len(urls)
+
     try:
-        for i in range(0, min(length, len(hs))):
+        for i in range(0, min(len(urls), len(hs))):
             res.append(download_url(urls[i], headers=hs[i]))
     except:
         return None
@@ -355,7 +432,8 @@ def download_user_urls(urls, **kwargs):
 
 # 解析资源, res为resource对象
 # 因为url下载下来的资源可能需要多个才能集合成一个对象, resource用来包装urls获得的资源
-def parse_user_urls(res):
+def parse_user_res(res):
+
     info = []
     roots = [
         USER_GENERAL_INFO_ROOT,
@@ -395,7 +473,6 @@ def parse_user_urls(res):
     
     return res_user
 
-
 # 获取用户
 # kwargs会作为参数传给requests.
 # 额外支持的kwargs:
@@ -407,7 +484,7 @@ def parse_user_urls(res):
 很高的情况下可以使用此方法，方便直接返回user对象. 不然则鼓励使用支持多线程的方法获取， 效率更高。
 '''
 def get_user(mid, **kwargs):
-    return parse_user_urls(download_user_urls(get_user_urls(mid, **kwargs)))
+    return parse_user_res(download_user_urls(get_user_urls(mid, **kwargs)))
     # has_summary = kwargs.pop('has_summary', False)
     # # has_summary = get_attr(kwargs, 'has_summary')
     # # if 'has_summary' in kwargs:
@@ -499,6 +576,84 @@ def get_user(mid, **kwargs):
     #         return user_obj
 
     # return user_obj
+'''
+----------------------------------user-------------------------------------
+'''
+
+'''
+----------------------------------submits-------------------------------------
+'''
+def get_submit_urls(aid, **kwargs):
+    res = []
+    res.append(url(
+        "get",
+        GET_UPPER_SUBMIT_DETAIL_URL,
+        "json",
+        {
+            'aid': aid
+        }
+    ))
+
+    return res
+
+
+def download_submit_urls(urls, **kwargs):
+    res = []
+    hs = [
+        GET_SUBMIT_DETAIL_HEADERS
+    ]
+
+    try:
+        for i in range(0, min(len(urls), len(hs))):
+            res.append(download_url(urls[i], headers=hs[i]))
+    except:
+        return resource(res)
+    return resource(res)
+
+
+def parse_submit_res(res):
+    info = []
+    roots = [
+        UPPER_SUBMIT_ROOT
+    ]
+    attrs = [
+        UPPER_SUBMIT_ATTR
+    ]
+    count = 0
+    res_submit = submit(0)
+    submit_keys = list(vars(res_submit).keys())
+
+    for i in range(0, len(res.data)):
+        info.append(res.data[i])
+
+    try:
+        for i in range(0, len(info)):
+            data = get_attr(info[i], roots[i])
+            for j in range(0, len(attrs[i])):
+                res_submit.__dict__[submit_keys[count]] = get_attr(data, attrs[i][j])
+                count = count + 1
+    except:
+        return res_submit
+
+    # 获取视频分p信息
+    if len(info) > 0:
+        data = get_attr(info[0], UPPER_SUBMIT_PART_ROOT)
+        reslist = [
+            [],[],[],[]
+        ]
+        for i in range(0, len(data)):
+            for j in range(0, len(UPPER_SUBMIT_PART_ATTR)):
+                reslist[j].append(get_attr(data[i], UPPER_SUBMIT_PART_ATTR[j]))
+        for i in range(0, 4):
+            res_submit.__dict__[submit_keys[count + i]] = reslist[i]
+
+    return res_submit
+
+def get_submit(aid, **kwargs):
+    return parse_submit_res(download_submit_urls(get_submit_urls(aid, **kwargs)))
+'''
+----------------------------------submits-------------------------------------
+'''
 
 
 if __name__ == "__main__":
@@ -516,8 +671,9 @@ if __name__ == "__main__":
     # ))
     # get_user_urls(398510, has_summary=True)
     # res = get_user_urls(398510, has_summary=True)
-    u = parse_user_urls(download_user_urls(get_user_urls(152683670, has_summary=True)))
-    print(vars(u))
+    # u = parse_user_res(download_user_urls(get_user_urls(152683670, has_summary=True)))
     # print(vars(u))
-    print(vars(get_user(1)))
+    # # print(vars(u))
+    # print(vars(get_user(1)))
+    print(vars(parse_submit_res(download_submit_urls(get_submit_urls(32754021)))))
     # print(vars(u))
