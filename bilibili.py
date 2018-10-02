@@ -5,6 +5,8 @@ import copy
 import datetime
 import requests
 
+from bs4 import BeautifulSoup
+
 # from collections import defaultdict
 # from collections.abc import Iterable  
 
@@ -20,6 +22,8 @@ GET_FOLLOW_INFO_URL = "https://api.bilibili.com/x/relation/stat"
 GET_UPPER_SUBMIT_INFO_URL = "https://space.bilibili.com/ajax/member/getSubmitVideos"
 # 获取视频
 GET_UPPER_SUBMIT_DETAIL_URL = "https://api.bilibili.com/x/web-interface/view"
+#获取弹幕
+GET_DANMAKU_URL = "https://api.bilibili.com/x/v1/dm/list.so"
 
 # 此header用于获取UP主的个人信息
 # 关键字段: 
@@ -82,7 +86,7 @@ UPPER_SUBMIT_SUMMARY_ROOT = ['data', 'vlist']
 UPPER_SUBMIT_SUMMARY_ATTR = [
     'aid', 'typeid', 'play', 'pic', 'description',
     'copyright', 'title', 'created', 'length', 'video_review',
-    'favorites'
+    'favorites', 'mid', 'author'
 ]
 
 
@@ -262,6 +266,34 @@ class submit(object):
         self.width = width
         self.height = height
 
+
+# 弹幕类
+class danmaku(object):
+    def __init__(
+        self,
+        cid=0,
+        appear_time=-1,
+        dtype=0,
+        font_size=0,
+        color=None,
+        send_time = None,
+        pool = 0,
+        sender_mid = 0,
+        rowid = 0,
+        content = ""
+    ):
+        self.cid = cid
+        self.appear_time = appear_time
+        self.dtype = dtype
+        self.font_size = font_size
+        self.color = color
+        self.send_time = send_time
+        self.pool = pool
+        self.sender_mid = sender_mid
+        self.rowid = rowid
+        self.content = content
+        
+
 '''
 ----------------------------------class-------------------------------------
 '''
@@ -284,7 +316,7 @@ def get_attr(kwargs, key):
 # 从HEADER中取得csrf值
 # csrf作为调用一些接口的必要参数
 def get_csrf():
-    search_res = re.search("bili_jct=(.*?);", get_attr(GET_UP_INFO_HEADER, 'Cookie'))
+    search_res = re.search("bili_jct=(.*?);", get_attr(GET_UP_INFO_HEADERS, 'Cookie'))
     return search_res.group(1) if search_res and search_res.group(1) else None
 
 
@@ -342,6 +374,7 @@ def download_url(url_g, **kwargs):
         )
     
     # 处理下载到的资源
+    response.encoding = 'utf-8'
     try:
         return {
             'TEXT': response.text,
@@ -485,97 +518,6 @@ def parse_user_res(res):
 '''
 def get_user(mid, **kwargs):
     return parse_user_res(download_user_urls(get_user_urls(mid, **kwargs)))
-    # has_summary = kwargs.pop('has_summary', False)
-    # # has_summary = get_attr(kwargs, 'has_summary')
-    # # if 'has_summary' in kwargs:
-    # #     kwargs.pop('has_summary')
-
-    # post_url = GET_UP_INFO_URL
-    # post_data = {
-    #     'csrf': get_csrf(),
-    #     'mid':mid
-    # }
-    # user_obj = user(mid)
-    
-    # try:
-    #     response = requests.post(
-    #         post_url,
-    #         data=post_data,
-    #         headers=GET_UP_INFO_HEADER,
-    #         **kwargs
-    #     )
-    #     response_json = response.json()
-    # except:
-    #     print("failed to connect the host")
-    #     return user_obj
-    
-    # user_data = get_attr(response_json, 'data')
-    # data_attributes = [
-    #     'name', 'sex', 'face', 'regtime', 'birthday', 'sign',
-    #     ['level_info', 'current_level'], ['vip', 'vipType'],
-    #     ['vip', 'vipStatus']
-    # ]
-
-    # # 获取up主基本参数
-    # try:
-    #     user_keys = list(vars(user_obj).keys())
-    #     for i in range(1, min(len(data_attributes), len(user_keys))):
-    #         user_obj.__dict__[user_keys[i]] = get_attr(user_data, data_attributes[i - 1])  
-    # except:
-    #     print("failed to get general infomation of user")
-    #     return user_obj
-
-    # # 获取up主的粉丝数与关注数
-    # try:
-    #     response = requests.get(
-    #         "%s?vmid=%d" % (GET_FOLLOW_INFO_URL, mid),
-    #         headers=GENERAL_HEADERS,
-    #         **kwargs
-    #     )
-    #     response_json = response.json()
-    #     follow_data = get_attr(response_json, 'data')
-    #     user_obj.follower = get_attr(follow_data, 'follower')
-    #     user_obj.following = get_attr(follow_data, 'following')
-    # except:
-    #     print("failed to get response")
-    #     return user_obj
-
-    # # 判断是否返回投稿信息
-    # # print("???")
-    # if has_summary:
-    #     # print(get_num_submit(mid))
-    #     try:
-    #         response = requests.get(
-    #             "%s?mid=%d&page=1&pagesize=%d" % (
-    #                 GET_UPPER_SUBMIT_INFO_URL,
-    #                 mid,
-    #                 get_num_submit(mid, **kwargs)
-    #             ),
-    #             headers=GENERAL_HEADERS,
-    #             **kwargs
-    #         )
-            
-    #         summary_attributes = [
-    #             'aid', 'typeid', 'play', 'pic', 'description',
-    #             'copyright', 'title', 'created', 'length', 'video_review',
-    #             'favorites'
-    #         ]
-    #         for each in get_attr(response.json(), ['data', 'vlist']):
-    #             # print(each)
-    #             summary_obj = submit_summary()
-    #             summary_keys = list(vars(summary_obj).keys())
-
-    #             # 遍历属性逐个赋值
-    #             for i in range(0, min(len(summary_keys), len(summary_attributes))):
-    #                 summary_obj.__dict__[summary_keys[i]] = get_attr(each, summary_attributes[i])
-
-    #             user_obj.submits.append(summary_obj)
-
-    #     except:
-    #         print("failed to get the infomation of submits.")
-    #         return user_obj
-
-    # return user_obj
 '''
 ----------------------------------user-------------------------------------
 '''
@@ -656,6 +598,72 @@ def get_submit(aid, **kwargs):
 '''
 
 
+'''
+----------------------------------danmaku-------------------------------------
+'''
+
+def get_danmaku_urls(cid, **kwargs):
+    return [
+        url(
+            "get",
+            "http://comment.bilibili.com/%s.xml" % cid,
+            "text"
+        )
+    ]
+
+def download_danmaku_urls(urls, **kwargs):
+    try:
+        return resource(
+            [
+                re.findall("/(\d*).xml", urls[0].link)[0],
+                download_url(urls[0], headers=GENERAL_HEADERS)
+            ]
+        )
+    except:
+        return None
+
+def prase_danmaku_res(res):
+    try:
+        cid = res.data[0]
+        text = res.data[1]
+    except:
+        return danmaku()
+
+    res_list = []
+    soup = BeautifulSoup(text, 'lxml')
+    danmakus = soup.find_all('d')
+    danmaku_keys = list(vars(danmaku()).keys())
+
+    # 遍历所有弹幕标签
+    for item in danmakus:
+        dproperty = item.get('p')
+        dps = dproperty.split(',')
+        danmaku_tmp = danmaku(cid)
+        for i in range(1, len(dps)):
+            danmaku_tmp.__dict__[danmaku_keys[i]] = dps[i - 1]
+        danmaku_tmp.content = item.get_text()
+        res_list.append(danmaku_tmp)
+    
+    return res_list
+            
+def get_danmaku(cid, **kwargs):
+    return prase_danmaku_res(download_danmaku_urls(get_danmaku_urls(cid, **kwargs)))       
+
+'''
+----------------------------------danmaku-------------------------------------
+'''
+
+
+'''
+----------------------------------reply-------------------------------------
+'''
+
+
+
+'''
+----------------------------------reply-------------------------------------
+'''
+
 if __name__ == "__main__":
     # print(download_url(
     #     url(
@@ -674,6 +682,18 @@ if __name__ == "__main__":
     # u = parse_user_res(download_user_urls(get_user_urls(152683670, has_summary=True)))
     # print(vars(u))
     # # print(vars(u))
-    # print(vars(get_user(1)))
-    print(vars(parse_submit_res(download_submit_urls(get_submit_urls(32754021)))))
+    # u = (get_user(1, has_summary=True))
+    # submit1 = u.submits[0]
+    # print(submit1.cid)
+    # for i in u.submits:
+    #     print(vars(i))
+    # print(vars(parse_submit_res(download_submit_urls(get_submit_urls(32754021)))))
     # print(vars(u))
+
+    submit1 = get_submit(32659982)
+    print(vars(submit1))
+    res = get_danmaku(submit1.cid[0])
+    for i in res:
+        print(i.content)
+    
+    
