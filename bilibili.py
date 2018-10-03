@@ -22,8 +22,14 @@ GET_FOLLOW_INFO_URL = "https://api.bilibili.com/x/relation/stat"
 GET_UPPER_SUBMIT_INFO_URL = "https://space.bilibili.com/ajax/member/getSubmitVideos"
 # 获取视频
 GET_UPPER_SUBMIT_DETAIL_URL = "https://api.bilibili.com/x/web-interface/view"
-#获取弹幕
+# 获取弹幕
 GET_DANMAKU_URL = "https://api.bilibili.com/x/v1/dm/list.so"
+# 获取历史弹幕
+GET_HISTORY_DANMAKU_URL = "https://api.bilibili.com/x/v2/dm/history"
+# 获取番剧索引
+GET_BANGUMI_INDEX_URL = "https://bangumi.bilibili.com/media/web_api/search/result"
+# 获取番剧播放信息
+GET_BANGUMI_PLAY_INFO_URL = "https://bangumi.bilibili.com/ext/web_api/season_count"
 
 # 此header用于获取UP主的个人信息
 # 关键字段: 
@@ -70,6 +76,33 @@ GET_SUBMIT_DETAIL_HEADERS  = {
     'api.bilibili.com',
 }
 
+GET_HISTORY_DANMAKU_HEADERS = {
+    'Accept':
+    'application/json, text/plain, */*',
+    'Accept - Encoding':
+    'gzip, deflate, br',
+    'Accept-Language':
+    'zh-CN,zh;',
+    'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36 Edge/15.15063',
+    'Host':
+    'api.bilibili.com',
+    'Cookie':
+    'finger=1c12d260; DedeUserID=152683670; DedeUserID__ckMd5=6e5488f6b82b890d; fts=1537678069; UM_distinctid=16604c14c8d1df-0a5b0cf28ae475-5701732-1fa400-16604c14c8e91b; rpdid=oqqwwimkqwdoskmxmqopw; BANGUMI_SS_1177_REC=34489; BANGUMI_SS_24588_REC=232473; CURRENT_FNVAL=8; BANGUMI_SS_3271_REC=82961; BANGUMI_SS_24571_REC=231926; stardustvideo=1; sid=d35bnves; SESSDATA=10c41556%2C1540345600%2C7eee939f; bili_jct=bda61d2ce5a96d2f1b67ab23dd4bcd67; LIVE_BUVID=AUTO2515377536013436; buvid3=13D8FDAA-DB92-40DD-A836-CBC83FC438116716infoc; _dfcaptcha=5f7d4556f5c0d31020bf5d9bdab89739; bp_t_offset_152683670=166989062909847236; CNZZDATA2724999=cnzz_eid%3D1723892295-1537674572-https%253A%252F%252Fwww.bilibili.com%252F%26ntime%3D1537759951'
+}
+
+GET_BANGUMI_INDEX_HEADERS = {
+    'Accept':
+    'application/json, text/plain, */*',
+    'Accept - Encoding':
+    'gzip, deflate, br',
+    'Accept-Language':
+    'zh-CN,zh;',
+    'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/52.0.2743.116 Safari/537.36 Edge/15.15063',
+    'Host':
+    'bangumi.bilibili.com'
+}
 USER_GENERAL_INFO_ROOT = 'data'
 USER_GENERAL_INFO_ATTR = [
     'mid','name', 'sex', 'face', 'regtime', 'birthday', 'sign',
@@ -102,6 +135,19 @@ UPPER_SUBMIT_PART_ROOT = ['data', 'pages']
 UPPER_SUBMIT_PART_ATTR = [
     'duration', 'cid', ['dimension', 'width'], ['dimension', 'height']
 ]
+
+BANGUMI_INDEX_ROOT = ['result', 'data']
+BANGUMI_INDEX_ITEM_ATTR = [
+    'cover', 'index_show', 'is_finish', 'link', 'media_id',
+    ['order', 'follow'], ['order', 'play'], ['order', 'pub_date'],['order', 'renewal_time'],
+    ['order', 'score'], 'season_id', 'title'
+]
+
+BANGUMI_PLAY_INFO_ROOT = 'result'
+BANGUMI_PLAY_INFO_ATTR = [
+    'coins', 'danmakus', 'favorites', 'views'
+]
+
 '''
 ----------------------------------global-------------------------------------
 '''
@@ -192,11 +238,13 @@ class url(object):
         link=None,
         accept_type="json",
         args = {},
+        unfinished = False
     ):
         self.method = method
         self.link=link
         self.accept_type = accept_type
         self.args=args
+        self.unfinished = unfinished
 
 
 class resource(object):
@@ -271,16 +319,16 @@ class submit(object):
 class danmaku(object):
     def __init__(
         self,
-        cid=0,
-        appear_time=-1,
-        dtype=0,
-        font_size=0,
-        color=None,
-        send_time = None,
-        pool = 0,
-        sender_mid = 0,
-        rowid = 0,
-        content = ""
+        cid=0,              # 视频cid
+        appear_time=-1,     # 出现时间
+        dtype=0,            # 弹幕类型
+        font_size=0,        # 字号
+        color=None,         # 颜色
+        send_time = None,   # 时间戳
+        pool = 0,           # 弹幕池
+        sender_mid = 0,     # 发送者的加密id
+        rowid = 0,          # 行号
+        content = ""        # 内容
     ):
         self.cid = cid
         self.appear_time = appear_time
@@ -292,7 +340,47 @@ class danmaku(object):
         self.sender_mid = sender_mid
         self.rowid = rowid
         self.content = content
-        
+
+
+# 番剧类
+class bangumi(object):
+    def __init__(
+        self,
+        cover=None,         # 番剧封面
+        index_show=0,       # 番剧分p数
+        is_finish=1,        # 是否完结
+        link=None,          # 番剧地址
+        media_id=0,         # media_id
+        follow=0,           # 追番人数（以万为单位）
+        play=0,             # 播放量（以万为单位）
+        publish_time=       # 开播时间
+        int(datetime.datetime.now().timestamp()),
+        renewal_time=       # 莫名其妙的时间
+        int(datetime.datetime.now().timestamp()),
+        score=0,            # 评分
+        season_id=0,        # season_id
+        title=None,         # 标题
+        coins=0,            # 投币
+        danmakus=0,         # 弹幕
+        favorites=0,        # 追番
+        views=0             # 播放量
+    ):
+        self.cover = cover
+        self.index_show = index_show
+        self.is_finish = is_finish
+        self.link = link
+        self.media_id = media_id
+        self.follow = follow
+        self.play = play
+        self.publish_time = publish_time
+        self.renewal_time = renewal_time
+        self.score = score
+        self.season_id = season_id
+        self.title = title
+        self.coins = coins
+        self.danmakus = danmakus
+        self.favorites = favorites
+        self.views = views
 
 '''
 ----------------------------------class-------------------------------------
@@ -334,6 +422,7 @@ def get_num_submit(mid, **kwargs):
         return get_attr(response.json(), ['data', 'count'])
     except:
         return 0
+
 
 # 下载url置顶的资源
 def download_url(url_g, **kwargs):
@@ -602,21 +691,36 @@ def get_submit(aid, **kwargs):
 ----------------------------------danmaku-------------------------------------
 '''
 
+# kwargs可用的参数:
+#   date="2018-10-02"   表示获取历史弹幕， 默认获取当前弹幕
 def get_danmaku_urls(cid, **kwargs):
-    return [
-        url(
+    date = kwargs.pop("date", None)
+    return [url(
             "get",
-            "http://comment.bilibili.com/%s.xml" % cid,
-            "text"
-        )
-    ]
+            GET_HISTORY_DANMAKU_URL,
+            "text",
+            {
+                "type":1,
+                "date":date,
+                "oid":cid
+            }
+        )] if date else [
+            url(
+                "get",
+                GET_DANMAKU_URL,
+                "text",
+                {
+                    "oid":cid
+                }
+            )
+        ]
 
 def download_danmaku_urls(urls, **kwargs):
     try:
         return resource(
             [
-                re.findall("/(\d*).xml", urls[0].link)[0],
-                download_url(urls[0], headers=GENERAL_HEADERS)
+                urls[0].args['oid'],
+                download_url(urls[0], headers=GENERAL_HEADERS if "list" in urls[0].link else GET_HISTORY_DANMAKU_HEADERS)
             ]
         )
     except:
@@ -664,36 +768,205 @@ def get_danmaku(cid, **kwargs):
 ----------------------------------reply-------------------------------------
 '''
 
-if __name__ == "__main__":
-    # print(download_url(
+'''
+----------------------------------bangumi-------------------------------------
+'''
+
+def get_bangumi_num():
+    return get_attr(download_url(
+        url(
+            "get",
+            GET_BANGUMI_INDEX_URL,
+            "json",
+            {
+                "sort":1,
+                "order":1,
+                "st":1,
+                "page":1,
+                "pagesize":1,
+                "season_type":1
+            }
+        ),
+        headers=GET_BANGUMI_INDEX_HEADERS
+    ), ['result', 'page', 'total'])
+
+# kwargs支持的参数:
+#   sort: 1 or 0 升序or降序 默认降序
+#   order: [0-5]    默认3(按追番人数排序)
+#   get_play_info: 是否获取播放信息, 硬币数之类
+#   get_play_info会显著降低效率, 因为番剧基本信息可以一次获取多个， 而精确播放信息却是单独分布的. 除非必要， 否则不建议使用get_play_info
+#   多线程环境下，建议使用不带get_play_info的get_bangumi_urls配合get_bangumi_play_info使用
+def get_bangumi_urls(page, pagesize, **kwargs):
+    get_play_info = kwargs.pop('get_play_info', False)
+    url_index = url(
+        "get",
+        GET_BANGUMI_INDEX_URL,
+        "json",
+        {
+            "page": page,
+            "pagesize": pagesize,
+            "st":1,
+            "season_type": 1,
+            "sort": kwargs.pop('sort', 0),
+            "order": kwargs.pop('order', 3)
+        }
+    )
+    res = []
+    res_url = [] if get_play_info else [url_index]
+    if get_play_info:
+        res.append(download_url(url_index, headers=GET_BANGUMI_INDEX_HEADERS))
+        for i in range(0, pagesize):
+            res_url.append(
+                url(
+                    "get",
+                    GET_BANGUMI_PLAY_INFO_URL,
+                    "json",
+                    {
+                        "season_id": get_attr(get_attr(res[0], BANGUMI_INDEX_ROOT)[i], 'season_id'),
+                        "season_type": 1
+                    }
+                )
+            )
+    return res, res_url
+    # res = [
     #     url(
-    #         "post",
-    #         "https://space.bilibili.com/ajax/member/GetInfo",
+    #         "get",
+    #         GET_BANGUMI_INDEX_URL,
     #         "json",
     #         {
-    #             'csrf':get_csrf(),
-    #             'mid':398510
+    #             "page": page,
+    #             "pagesize": pagesize,
+    #             "st":1,
+    #             "season_type": 1,
+    #             "sort": kwargs.pop('sort', 0),
+    #             "order": kwargs.pop('order', 3)
     #         }
-    #     ),
-    #     headers=GET_UP_INFO_HEADER
-    # ))
-    # get_user_urls(398510, has_summary=True)
-    # res = get_user_urls(398510, has_summary=True)
-    # u = parse_user_res(download_user_urls(get_user_urls(152683670, has_summary=True)))
-    # print(vars(u))
-    # # print(vars(u))
-    # u = (get_user(1, has_summary=True))
-    # submit1 = u.submits[0]
-    # print(submit1.cid)
-    # for i in u.submits:
-    #     print(vars(i))
-    # print(vars(parse_submit_res(download_submit_urls(get_submit_urls(32754021)))))
-    # print(vars(u))
+    #     )
+    # ]
+    # if kwargs.pop('get_play_info', False):
+    #     res.append(
+    #         url(
+    #             "get",
+    #             "get_play_info",
+    #             "json",
+    #             {
+    #                 "season_id": None,
+    #                 "season_type": 1
+    #             },
+    #             True
+    #         )
+    #     )
+    # return res
 
-    submit1 = get_submit(32659982)
-    print(vars(submit1))
-    res = get_danmaku(submit1.cid[0])
-    for i in res:
-        print(i.content)
+
+def get_bangumi_paly_info_urls(season_id, **kwargs):
+    res_url = []
+    res_url.append(
+        url(
+            "get",
+            GET_BANGUMI_PLAY_INFO_URL,
+            "json",
+            {
+                "season_id": season_id,
+                "season_type": 1
+            }
+        )
+    )
+    return res_url
+
+def download_bangumi_play_info_urls(urls, **kwargs):
+    res_list = [download_url(urls[0], headers=GET_BANGUMI_INDEX_HEADERS)]
+    return resource(res_list)
+
+def prase_bangumi_play_info(res):
+    data = get_attr(res.data[0], BANGUMI_PLAY_INFO_ROOT)
+    bangumi_keys = list(vars(bangumi()).keys())
+
+    bangumi_temp = bangumi()
+    for j in range(12, 16):
+        bangumi_temp.__dict__[bangumi_keys[j]] = get_attr(data, BANGUMI_PLAY_INFO_ATTR[j - 12])
     
+    return bangumi_temp
+
+
+def get_bangumi_play_info(season_id, **kwargs):
+    return prase_bangumi_play_info(download_bangumi_play_info_urls(get_bangumi_paly_info_urls(season_id, **kwargs)))
+# 历史遗留函数, 不用管
+def bangumi_callback(url_list, index, res, **kwargs):
+    current = url_list[index]
+    if current.unfinished:
+        data = get_attr(res[index - 1], BANGUMI_INDEX_ROOT)
+        current.link = GET_BANGUMI_PLAY_INFO_URL
+        current.args['season_id'] = get_attr(data[0], 'season_id')
+        for i in range(1, len(data)):
+            url_list.append(
+                url(
+                    "get",
+                    GET_BANGUMI_PLAY_INFO_URL,
+                    "json",
+                    {
+                        "season_id": get_attr(data[i], 'season_id'),
+                        "season_type": 1
+                    }
+                )
+            )
+
+def download_bangumi_urls(urls, **kwargs):
+    res_list= kwargs.pop('res', [])
+    # count = 0
+    for i in range(0, len(urls)):
+        res_list.append(
+            download_url(
+                urls[i],
+                headers=GET_BANGUMI_INDEX_HEADERS
+            )
+        )
+        # count = count + 1
     
+    # for i in range(count, len(urls)):
+    #     res_list.append(
+    #         download_url(
+    #             urls[i], headers=GET_BANGUMI_INDEX_HEADERS
+    #         )
+    #     )
+
+
+    return resource(res_list)
+
+def prase_bangumi_res(res):
+    res_list = []
+    data = get_attr(res.data[0], BANGUMI_INDEX_ROOT)
+    bangumi_keys = list(vars(bangumi()).keys())
+
+    for i in range(0, len(data)):
+        bangumi_temp = bangumi()
+        for j in range(0, len(BANGUMI_INDEX_ITEM_ATTR)):
+            bangumi_temp.__dict__[bangumi_keys[j]] = get_attr(data[i], BANGUMI_INDEX_ITEM_ATTR[j])
+        res_list.append(bangumi_temp)
+
+    for i in range(1, len(res.data)):
+        for j in range(0, len(BANGUMI_PLAY_INFO_ATTR)):
+            res_list[i - 1].__dict__[bangumi_keys[len(BANGUMI_INDEX_ITEM_ATTR) + j]] = get_attr(
+                get_attr(res.data[i], BANGUMI_PLAY_INFO_ROOT), BANGUMI_PLAY_INFO_ATTR[j]
+            )
+    
+    return res_list
+
+def get_bangumi(page, pagesize, **kwargs):
+    res = get_bangumi_urls(page, pagesize, **kwargs)
+    return prase_bangumi_res(download_bangumi_urls(res[1], res=res[0]))
+    # return prase_bangumi_res(download_bangumi_urls(get_bangumi_urls(page, pagesize, **kwargs), callback=bangumi_callback))
+
+'''
+----------------------------------bangumi-------------------------------------
+'''
+
+if __name__ == "__main__":
+    # rlist = prase_bangumi_res(download_bangumi_urls(get_bangumi_urls(1, 5, get_play_info=True), callback=bangumi_callback))
+    # for i in range(0, len(rlist)):
+    #     print(vars(rlist[i]))
+
+    s = get_bangumi(1, 20)
+    for i in s:
+        print(vars(get_bangumi_play_info(i.season_id)))
+        
